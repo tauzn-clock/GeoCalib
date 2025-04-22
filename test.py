@@ -4,7 +4,10 @@ import numpy as np
 import json
 import os
 from PIL import Image
+import matplotlib.pyplot as plt
+
 from depth_to_pcd import depth_to_pcd
+from get_normal import get_normal
 
 DIR = "/scratchdata/processed/stair_up"
 for INDEX in range(1,200):
@@ -38,40 +41,76 @@ for INDEX in range(1,200):
     normal = normal / np.linalg.norm(normal)
     print(normal)
 
-    dist = np.dot(points, normal)
+    # Find img normal
+    img_normal = get_normal(depth, INTRINSICS)
+    print(img_normal.shape)
+
+    print(img_normal.max(), img_normal.min())
+
+    if False:
+        img_normal_rgb = (img_normal + 1)/2 * 255
+        img_normal_rgb = img_normal_rgb.astype(np.uint8)
+        plt.imsave("normal.png", img_normal_rgb)
+
+    if False:
+        dist = np.dot(points, normal)
+
+        # Bin dist into bins of size 0.1
+        bins = np.arange(dist.min(), dist.max(), 0.1)
+        hist, bin_edges = np.histogram(dist, bins=bins)
+
+        # Create mask
+        mask = np.zeros_like(depth)
+        H, W = depth.shape
+        cnt = 1
+        for i in range(len(hist)):
+            corresponding_index = index[(dist > bin_edges[i]) & (dist <= bin_edges[i+1]) & (dist != 0)]
+            if len(corresponding_index) < 0.02 * H * W:
+                continue
+            mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
+            cnt += 1
+
+        print(mask.shape)
+    
+    else:
+        img_normal = img_normal.reshape(-1, 3)
+
+        dot1 = np.dot(img_normal, normal)
+        dot2 = np.dot(img_normal, -normal)
+        dot1 = dot1.reshape(-1,1)
+        dot2 = dot2.reshape(-1,1)
+
+        angle_dist = np.concatenate((dot1, dot2), axis=1)
+        angle_dist = np.max(angle_dist, axis=1)
+
+        scalar_dist = np.dot(points, normal)
+        scalar_dist[angle_dist < 0.9] = 0
+        print(scalar_dist.max(), scalar_dist.min())
+
+        if True:
+            # Plot histogram
+            fig, ax = plt.subplots()
+            ax.hist(scalar_dist, bins=100)
+            plt.xlabel("Distance")
+            plt.ylabel("Count")
+            plt.title("Histogram of Distance")
+            plt.show()
+
+        # Bin dist into bins of size 0.1
+        bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.2)
+        hist, bin_edges = np.histogram(scalar_dist, bins=bins)
+
+        mask = np.zeros_like(depth)
+        H, W = depth.shape
+        cnt = 1
+        for i in range(len(hist)):
+            corresponding_index = index[(scalar_dist > bin_edges[i]) & (scalar_dist <= bin_edges[i+1]) & (scalar_dist != 0)]
+            if len(corresponding_index) < 0.01 * H * W:
+                continue
+            mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
+            cnt += 1
 
     if True:
-        import matplotlib.pyplot as plt
-
-        # Plot dist as histogram
-        fig, ax = plt.subplots()
-        plt.hist(dist, bins=100)
-        plt.xlabel("Distance")
-        plt.ylabel("Frequency")
-        plt.title("Distance Histogram")
-        # Save histogram
-        plt.savefig("dist.png")
-
-    # Bin dist into bins of size 0.1
-    bins = np.arange(dist.min(), dist.max(), 0.1)
-    hist, bin_edges = np.histogram(dist, bins=bins)
-
-    # Create mask
-    mask = np.zeros_like(depth)
-    H, W = depth.shape
-    cnt = 1
-    for i in range(len(hist)):
-        corresponding_index = index[(dist > bin_edges[i]) & (dist <= bin_edges[i+1]) & (dist != 0)]
-        if len(corresponding_index) < 0.02 * H * W:
-            continue
-        mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
-        cnt += 1
-
-    print(mask.shape)
-
-    if True:
-        import matplotlib.pyplot as plt
-
         # Plot mask
         fig, ax = plt.subplots()
         ax.imshow(mask)
