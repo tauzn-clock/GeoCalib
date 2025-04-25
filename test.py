@@ -9,8 +9,11 @@ import matplotlib.pyplot as plt
 from depth_to_pcd import depth_to_pcd
 from get_normal import get_normal
 
-DIR = "/scratchdata/processed/stair_up"
-for INDEX in range(1,200):
+from information_optimisation import plane_ransac
+from hsv import hsv_img
+
+DIR = "/home/daoxin/scratchdata/processed/stairs_up"
+for INDEX in range(1,1000):
     with open(os.path.join(DIR, "camera_info.json"), "r") as f:
         camera_info = json.load(f)
     INTRINSICS = camera_info["P"]
@@ -52,75 +55,76 @@ for INDEX in range(1,200):
         img_normal_rgb = img_normal_rgb.astype(np.uint8)
         plt.imsave("normal.png", img_normal_rgb)
 
-    if False:
-        dist = np.dot(points, normal)
 
-        # Bin dist into bins of size 0.1
-        bins = np.arange(dist.min(), dist.max(), 0.1)
-        hist, bin_edges = np.histogram(dist, bins=bins)
+    img_normal = img_normal.reshape(-1, 3)
 
-        # Create mask
-        mask = np.zeros_like(depth)
-        H, W = depth.shape
-        cnt = 1
-        for i in range(len(hist)):
-            corresponding_index = index[(dist > bin_edges[i]) & (dist <= bin_edges[i+1]) & (dist != 0)]
-            if len(corresponding_index) < 0.02 * H * W:
-                continue
-            mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
-            cnt += 1
+    dot1 = np.dot(img_normal, normal)
+    dot2 = np.dot(img_normal, -normal)
+    dot1 = dot1.reshape(-1,1)
+    dot2 = dot2.reshape(-1,1)
 
-        print(mask.shape)
+    angle_dist = np.concatenate((dot1, dot2), axis=1)
+    angle_dist = np.max(angle_dist, axis=1)
+
+    scalar_dist = np.dot(points, normal)
+    scalar_dist[angle_dist < 0.9] = 0
+    print(scalar_dist.max(), scalar_dist.min())
+
+    if True:
+        # Plot histogram
+        fig, ax = plt.subplots()
+        ax.hist(scalar_dist, bins=100)
+        plt.xlabel("Distance")
+        plt.ylabel("Count")
+        plt.title("Histogram of Distance")
+        plt.show()
+
+    """
+    # Bin dist into bins of size 0.1
+    bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.2)
+    hist, bin_edges = np.histogram(scalar_dist, bins=bins)
+
+    mask = np.zeros_like(depth)
+    H, W = depth.shape
+    cnt = 1
+    for i in range(len(hist)):
+        corresponding_index = index[(scalar_dist > bin_edges[i]) & (scalar_dist <= bin_edges[i+1]) & (scalar_dist != 0)]
+        if len(corresponding_index) < 0.01 * H * W:
+            continue
+        mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
+        cnt += 1
+    """
+
+    mask = np.zeros_like(angle_dist, dtype=bool)
+    mask[angle_dist > 0.9] = True
+
+    R = 10.0
+    EPSILON = 0.001
+    SIGMA = depth.flatten() * 0.01
+    CONFIDENCE = 0.99
+    INLIER_THRESHOLD = 0.2
+    MAX_PLANE = 5
+
+    information, mask, plane = plane_ransac(depth, INTRINSICS, R, EPSILON, SIGMA, CONFIDENCE, INLIER_THRESHOLD, MAX_PLANE, mask,verbose=True,post_processing=False)
     
-    else:
-        img_normal = img_normal.reshape(-1, 3)
-
-        dot1 = np.dot(img_normal, normal)
-        dot2 = np.dot(img_normal, -normal)
-        dot1 = dot1.reshape(-1,1)
-        dot2 = dot2.reshape(-1,1)
-
-        angle_dist = np.concatenate((dot1, dot2), axis=1)
-        angle_dist = np.max(angle_dist, axis=1)
-
-        scalar_dist = np.dot(points, normal)
-        scalar_dist[angle_dist < 0.9] = 0
-        print(scalar_dist.max(), scalar_dist.min())
-
-        if True:
-            # Plot histogram
-            fig, ax = plt.subplots()
-            ax.hist(scalar_dist, bins=100)
-            plt.xlabel("Distance")
-            plt.ylabel("Count")
-            plt.title("Histogram of Distance")
-            plt.show()
-
-        # Bin dist into bins of size 0.1
-        bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.2)
-        hist, bin_edges = np.histogram(scalar_dist, bins=bins)
-
-        mask = np.zeros_like(depth)
-        H, W = depth.shape
-        cnt = 1
-        for i in range(len(hist)):
-            corresponding_index = index[(scalar_dist > bin_edges[i]) & (scalar_dist <= bin_edges[i+1]) & (scalar_dist != 0)]
-            if len(corresponding_index) < 0.01 * H * W:
-                continue
-            mask[corresponding_index[:, 0], corresponding_index[:, 1]] = cnt
-            cnt += 1
-
+    min_idx = np.argmin(information)
+    print("Information: ", information)
+    print("Min Mask IDX: ", min_idx)
+    for i in range(min_idx+1, MAX_PLANE+1):
+        mask[mask == i] = 0
+    mask = mask.reshape(depth.shape)
+    print(mask.max(), mask.min())
     if True:
         # Plot mask
         fig, ax = plt.subplots()
-        ax.imshow(mask)
+        ax.imshow(hsv_img(mask))
         plt.axis('off')
         # Save mask
         plt.savefig("mask.png")
 
         fig, ax = plt.subplots()
         ax.imshow(image.permute(1, 2, 0).cpu().numpy())
-        ax.imshow(mask, alpha=0.5, cmap="hsv")
+        ax.imshow(hsv_img(mask), alpha=0.5, cmap="hsv")
         plt.axis('off')
         # Save depth
         plt.savefig(os.path.join(DIR, f"test/{INDEX}.png"), bbox_inches='tight', pad_inches=0)
