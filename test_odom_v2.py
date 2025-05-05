@@ -17,13 +17,16 @@ from utils.get_mask import get_mask
 from utils.hsv import hsv_img
 from utils.metric3d import metric3d
 
-DIR = "/home/daoxin/scratchdata/processed/stair4_filtered"
+from scipy.spatial.transform import Rotation as R
+
+DIR = "/home/daoxin/scratchdata/processed/short"
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
 INTRINSICS = camera_info["P"]
 print(INTRINSICS)
 
-USE_MEASURED = False
+USE_MEASURED = True
+USE_ORIENTATION = True
 
 model = torch.hub.load('yvanyin/metric3d', 'metric3d_vit_small', pretrain=True).cuda() 
 model = model.cuda() if torch.cuda.is_available() else model
@@ -34,7 +37,7 @@ with open(os.path.join(DIR, "pose.csv"), "r") as f:
     lines = f.readlines()
     for line in lines:
         line = line.strip().split(",")
-        odom.append([float(line[0]), float(line[1]), float(line[2]), float(line[3]), float(line[4]), float(line[5])])
+        odom.append([float(x) for x in line])
 odom = np.array(odom)
 
 for INDEX in range(0,1000):
@@ -55,9 +58,24 @@ for INDEX in range(0,1000):
     points, index = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
     
     # Find distnace of pts
-    grav_normal = [odom[INDEX, 0], odom[INDEX, 1], odom[INDEX, 2]]
-    grav_normal = np.array(grav_normal)
-    grav_normal = grav_normal / np.linalg.norm(grav_normal)
+    if USE_ORIENTATION:
+        print()
+
+        #grav_normal = odom[INDEX, 0:3]
+        #grav_normal = grav_normal / np.linalg.norm(grav_normal)
+        #print(grav_normal)
+
+        orientation_quat = [odom[INDEX, 7], odom[INDEX, 8], odom[INDEX, 9], odom[INDEX, 6]]
+        orientation = R.from_quat(orientation_quat).as_matrix()
+    
+        grav_normal = np.array([0, 0, -1])
+        grav_normal = orientation.T @ grav_normal
+        grav_normal = grav_normal / np.linalg.norm(grav_normal)
+        grav_normal = np.array([grav_normal[1], grav_normal[2], grav_normal[0]]) # Transform to camera frame, unique for this tf
+        print(grav_normal)
+    else:
+        grav_normal = odom[INDEX, 0:3]
+        grav_normal = grav_normal / np.linalg.norm(grav_normal)
 
     img_normal_pos = img_normal.reshape(-1, 3)
     img_normal_neg = -img_normal_pos
