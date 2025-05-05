@@ -14,7 +14,8 @@ pred_normal = output_dict['prediction_normal'][:, :3, :, :] # only available for
 normal_confidence = output_dict['prediction_normal'][:, 3, :, :] # see https://arxiv.org/abs/2109.09881 for details
 
 # Visualize depth
-plt.imsave('depth.png', pred_depth[0, 0].cpu().numpy())
-plt.imsave('normal.png', pred_normal[0, 0].cpu().numpy())
-plt.imsave('confidence.png', confidence[0, 0].cpu().numpy())
-plt.imsave('normal_confidence.png', normal_confidence[0].cpu().numpy())
+output_depth = pred_depth[0, 0].cpu().numpy()[2:-2,2:-2]
+output_normal = pred_normal[0,:].cpu().numpy().transpose(1,2,0)[2:-2,2:-2]
+
+plt.imsave('depth.png', output_depth)
+plt.imsave('normal.png', (output_normal+1)/2)
