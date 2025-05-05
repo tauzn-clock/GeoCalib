@@ -9,7 +9,7 @@ from get_normal import get_normal
 
 from hsv import hsv_img
 
-DIR = "/home/daoxin/scratchdata/processed/stair4"
+DIR = "/home/daoxin/scratchdata/processed/stair4_filtered"
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
 INTRINSICS = camera_info["P"]
@@ -86,10 +86,10 @@ for INDEX in range(0,1000):
     bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.01)
     hist, bin_edges = np.histogram(scalar_dist, bins=bins)
 
-    kernel_size = 5
+    kernel_size = 11
     kernel = [-kernel_size//2 + 1 + i for i in range(kernel_size)]
 
-    group_size = 3
+    group_size = 5
     group = [-group_size//2 + 1 + i for i in range(group_size)]
 
     # Dilation of histogram

@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+
 import numpy as np
 import json
 import os
@@ -5,12 +9,15 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D # <--- This is important for 3d plotting 
 
-from depth_to_pcd import depth_to_pcd
-from get_normal import get_normal
-
 from hsv import hsv_img
 
-DIR = "/scratchdata/processed/stair4_filtered"
+from utils.depth_to_pcd import depth_to_pcd
+from utils.get_normal import get_normal
+from utils.gravity_correction import gravity_correction
+from utils.get_mask import get_mask
+from utils.hsv import hsv_img
+
+DIR = "/home/daoxin/scratchdata/processed/stair4_filtered"
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
 INTRINSICS = camera_info["P"]
@@ -33,20 +40,20 @@ for INDEX in range(0,1000):
     depth = np.array(depth)/1000
 
     # Convert depth to point cloud
-
-    points, index = depth_to_pcd(depth, INTRINSICS)
-
+    W, H = depth.shape
+    points, index = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
+    
     # Find distnace of pts
-    normal = [odom[INDEX, 0], odom[INDEX, 1], odom[INDEX, 2]]
-    normal = np.array(normal)
-    normal = normal / np.linalg.norm(normal)
+    grav_normal = [odom[INDEX, 0], odom[INDEX, 1], odom[INDEX, 2]]
+    grav_normal = np.array(grav_normal)
+    grav_normal = grav_normal / np.linalg.norm(grav_normal)
 
     # Find img normal
     img_normal = get_normal(depth, INTRINSICS)
     img_normal_pos = img_normal.reshape(-1, 3)
     img_normal_neg = -img_normal_pos
-    dot1 = np.dot(img_normal_pos, normal).reshape(-1, 1)
-    dot2 = np.dot(img_normal_neg, normal).reshape(-1, 1)
+    dot1 = np.dot(img_normal_pos, grav_normal).reshape(-1, 1)
+    dot2 = np.dot(img_normal_neg, grav_normal).reshape(-1, 1)
     
     dot = np.concatenate((dot1, dot2), axis=1)
     normal_index = np.argmax(dot, axis=1)
@@ -59,8 +66,8 @@ for INDEX in range(0,1000):
         fig = plt.figure()
         ax = fig.add_subplot(projection='3d')
         bound = 0.9
-        ax.scatter(img_normal[(np.dot(img_normal, normal) < bound) & (points[:,2]!=0), 0], img_normal[(np.dot(img_normal, normal) < bound) & (points[:,2]!=0), 1], img_normal[(np.dot(img_normal, normal) < bound) & (points[:,2]!=0), 2], marker='o', s=1, c='b')
-        ax.scatter(img_normal[(np.dot(img_normal, normal) > bound) & (points[:,2]!=0), 0], img_normal[(np.dot(img_normal, normal) > bound) & (points[:,2]!=0), 1], img_normal[(np.dot(img_normal, normal) > bound) & (points[:,2]!=0), 2], marker='o', s=1, c='r')
+        ax.scatter(img_normal[(np.dot(img_normal, grav_normal) < bound) & (points[:,2]!=0), 0], img_normal[(np.dot(img_normal, grav_normal) < bound) & (points[:,2]!=0), 1], img_normal[(np.dot(img_normal, grav_normal) < bound) & (points[:,2]!=0), 2], marker='o', s=1, c='b')
+        ax.scatter(img_normal[(np.dot(img_normal, grav_normal) > bound) & (points[:,2]!=0), 0], img_normal[(np.dot(img_normal, grav_normal) > bound) & (points[:,2]!=0), 1], img_normal[(np.dot(img_normal, grav_normal) > bound) & (points[:,2]!=0), 2], marker='o', s=1, c='r')
         fig.savefig("sphere.png")
         
         img_normal_rgb = (img_normal + 1)/2 * 255
@@ -68,137 +75,35 @@ for INDEX in range(0,1000):
         H, W = depth.shape
         img_normal_rgb = img_normal_rgb.reshape(H, W, 3)
         plt.imsave("normal.png", img_normal_rgb)
-
-    # Rotation vector along x-axis
-    print(normal)
-    from scipy.spatial.transform import Rotation as R
-    for _ in range(10):
-        normal_x = np.array([0,normal[1], normal[2]])
-        normal_x = normal_x / (np.linalg.norm(normal_x) + 1e-15)
-        img_normal_x = img_normal.copy()
-        img_normal_x[:, 0] = 0
-        img_normal_x = img_normal_x / (np.linalg.norm(img_normal_x, axis=1, keepdims=True) + 1e-15)
-
-        cos_x = img_normal_x[:,1] * normal_x[1] + img_normal_x[:,2] * normal_x[2]
-        sin_x = img_normal_x[:,2] * normal_x[1] - img_normal_x[:,1] * normal_x[2]
-        x = np.arctan2(sin_x, cos_x)
-
-        normal_y = np.array([normal[0], 0, normal[2]])
-        normal_y = normal_y / (np.linalg.norm(normal_y) + 1e-15)
-        img_normal_y = img_normal.copy()
-        img_normal_y[:, 1] = 0
-        img_normal_y = img_normal_y / (np.linalg.norm(img_normal_y, axis=1, keepdims=True) + 1e-15)
-
-        cos_y = img_normal_y[:,0] * normal_y[0] + img_normal_y[:,2] * normal_y[2]
-        sin_y = -img_normal_y[:,2] * normal_y[0] +img_normal_y[:,0] * normal_y[2]
-        y = np.arctan2(sin_y, cos_y)
-
-        angle_dist = np.dot(img_normal, normal)
-        bound = 0.9
-        mean_x = np.mean(x[(angle_dist > bound) & (points[:,2]!=0)])
-        mean_y = np.mean(y[(angle_dist > bound) & (points[:,2]!=0)])
-
-        print(mean_x,mean_y)
-
-        # Rotate the normal along x and y axis
-        rot = R.from_euler("XYZ",[mean_x,mean_y,0]).as_matrix()
-        normal = rot @ normal
-        #normal = np.array([normal[0], np.cos(mean_x) * normal[1] - np.sin(mean_x) * normal[2], np.sin(mean_x) * normal[1] + np.cos(mean_x) * normal[2]])
-        #normal = np.array([np.cos(mean_y) * normal[0] + np.sin(mean_y) * normal[2], normal[1], -np.sin(mean_y) * normal[0] + np.cos(mean_y) * normal[2]])
     
-    print(normal)
-
-    # Get distances
-
-    dot1 = np.dot(img_normal, normal)
-    dot2 = np.dot(img_normal, -normal)
-    dot1 = dot1.reshape(-1,1)
-    dot2 = dot2.reshape(-1,1)
-
-    angle_dist = np.concatenate((dot1, dot2), axis=1)
-    angle_dist = np.max(angle_dist, axis=1)
-
-    scalar_dist = np.dot(points, normal)
-    scalar_dist[angle_dist < 0.9] = 0
-    scalar_dist[points[:, 2] == 0] = 0
+    dot_bound = 0.9
+    correction_iteration = 5
+    grav_normal = gravity_correction(grav_normal,img_normal, points.reshape(-1,3), dot_bound, correction_iteration)
 
     if True:
+        dot1 = np.dot(img_normal, grav_normal).reshape(-1,1)
+        dot2 = np.dot(img_normal, -grav_normal).reshape(-1,1)
+
+        angle_dist = np.concatenate((dot1, dot2), axis=1)
+        angle_dist = np.max(angle_dist, axis=1)
+        scalar_dist = np.dot(points.reshape(-1,3), grav_normal)
+        scalar_dist[angle_dist < dot_bound] = 0
+        scalar_dist[points.reshape(-1,3)[:, 2] == 0] = 0
+
         # Plot histogram
         fig, ax = plt.subplots()
         ax.hist(scalar_dist[scalar_dist!=0], bins=1000)
         plt.xlabel("Distance")
         plt.ylabel("Count")
         plt.title("Histogram of Distance")
-        fig.savefig("histogram.png")
-
-    K = 8
-    
-    index = index[scalar_dist != 0]
-    scalar_dist = scalar_dist[scalar_dist != 0]
-    if (len(scalar_dist)==0):
-        continue
-
-    bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.01)
-    hist, bin_edges = np.histogram(scalar_dist, bins=bins)
+        fig.savefig("./histogram.png")
 
     kernel_size = 11
-    kernel = [-kernel_size//2 + 1 + i for i in range(kernel_size)]
+    cluster_size = 5
 
-    group_size = 5
-    group = [-group_size//2 + 1 + i for i in range(group_size)]
+    mask = get_mask(grav_normal, img_normal, points.reshape(-1,3), dot_bound, kernel_size, cluster_size)
+    mask_2d = mask.reshape(H, W)
 
-    # Dilation of histogram
-    dilation_hist = np.pad(hist, (kernel_size//2, kernel_size//2))
-    dilation_hist = [np.roll(dilation_hist, i) for i in kernel]
-    dilation_hist = np.array(dilation_hist)
-    dilation_hist = np.max(dilation_hist, axis=0)[kernel_size//2:-kernel_size//2+1]
-    
-    # Get index where dilation_hist is equal to hist
-    candidate_peak = np.where(dilation_hist == hist)[0]
-
-    local_total = np.pad(hist, (group_size//2, group_size//2))
-    local_total = [np.roll(local_total, i) for i in group]
-    local_total = np.array(local_total)
-    local_total = np.sum(local_total, axis=0)[group_size//2:-group_size//2+1]
-
-    # Get index of the 10 largest values in local_total
-    best_peaks = np.argsort(local_total[candidate_peak])[-4:]
-    best_peaks_index = candidate_peak[best_peaks]
-    
-    mask_2d = np.zeros_like(depth, dtype=np.uint8)
-    for i in range(len(best_peaks_index)):
-        for j in range(len(scalar_dist)):
-            if (best_peaks_index[i] - group_size//2) >=0:
-                lower_bound = bin_edges[best_peaks_index[i]-group_size//2]
-            else:
-                lower_bound = bin_edges[0]
-            if (best_peaks_index[i] + 1 + group_size//2) < len(bin_edges):
-                upper_bound = bin_edges[best_peaks_index[i] + 1 + group_size//2]
-            else:
-                upper_bound = bin_edges[-1]
-            if scalar_dist[j] > lower_bound and scalar_dist[j] < upper_bound:
-                mask_2d[index[j, 0], index[j, 1]] = i + 1
-    print(mask_2d.max())
-
-
-    """
-    # Randomly sample K points
-    idx = np.random.choice(len(scalar_dist), K, replace=False)
-    means = scalar_dist[idx]
-
-    for _ in range(100):
-        dist = np.abs(scalar_dist[:, None] - means[None, :])
-        dist = abs(dist)
-        mask = np.argmin(dist, axis=1)
-        means = np.zeros((K, 1))
-        for i in range(K):
-            means[i] = np.mean(scalar_dist[mask == i])
-        means = means.reshape(-1)
-
-    mask_2d = np.zeros_like(depth, dtype=np.uint8)
-    for i in range(len(mask)):
-        mask_2d[index[i, 0], index[i, 1]] = mask[i] + 1
-    """
     if True:
         # Plot mask
         fig, ax = plt.subplots()

@@ -1,9 +1,13 @@
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from depth_to_pcd import depth_to_pcd
 import numpy as np
 
 def get_normal(depth, INTRINSICS):
     H, W = depth.shape
-    points, _ = depth_to_pcd(depth, INTRINSICS)
+    points, _ = depth_to_pcd(depth.flatten(), INTRINSICS, W, H)
 
     points = points.reshape(H, W, 3)
 
