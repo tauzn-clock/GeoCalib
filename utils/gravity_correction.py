@@ -29,8 +29,6 @@ def gravity_correction(grav_normal, img_normal, pts_3d, bound, iteration):
 
         #rot = R.from_euler("XYZ",[mean_x,mean_y,0]).as_matrix()
         rot = get_rotation(mean_x, mean_y, 0)
-        print(rot[0,0] * grav_normal[0] + rot[0,1] * grav_normal[1] + rot[0,2] * grav_normal[2])
-        print(rot[0,1],rot[1,0])
         grav_normal = rot @ grav_normal
         print("mean_x: ", mean_x, "mean_y: ", mean_y)
 

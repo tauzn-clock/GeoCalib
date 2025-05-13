@@ -1,20 +1,23 @@
-from geocalib import GeoCalib
-import torch
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = GeoCalib().to(device)
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 import numpy as np
+import torch
 import json
 import os
 from PIL import Image
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D # <--- This is important for 3d plotting 
 
-from depth_to_pcd import depth_to_pcd
-from get_normal import get_normal
+from utils.depth_to_pcd import depth_to_pcd
+from utils.get_normal import get_normal
+from utils.gravity_correction import gravity_correction
+from utils.get_mask import get_mask
+from utils.hsv import hsv_img
+from utils.metric3d import metric3d
 
-from information_optimisation import plane_ransac
-from hsv import hsv_img
+from scipy.spatial.transform import Rotation as R
 
 DIR = "/home/daoxin/scratchdata/processed/stair4"
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
@@ -22,128 +25,127 @@ with open(os.path.join(DIR, "camera_info.json"), "r") as f:
 INTRINSICS = camera_info["P"]
 print(INTRINSICS)
 
-for INDEX in range(1,1000):
+USE_MEASURED = True
+USE_ORIENTATION = True
+ANGLE_INCREMENT = 41
+KERNEL_2D = 5
+
+#model = torch.hub.load('yvanyin/metric3d', 'metric3d_vit_small', pretrain=True).cuda() 
+#model = model.cuda() if torch.cuda.is_available() else model
+
+# Open csv
+odom = []
+with open(os.path.join(DIR, "pose.csv"), "r") as f:
+    lines = f.readlines()
+    for line in lines:
+        line = line.strip().split(",")
+        odom.append([float(x) for x in line])
+odom = np.array(odom)
+
+for INDEX in range(0,1000):
     # load image as tensor in range [0, 1] with shape [C, H, W]
-    image = model.load_image(os.path.join(DIR,f"rgb/{INDEX}.png")).to(device)
-    depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
-    depth = np.array(depth)/1000
+    image = Image.open(os.path.join(DIR,f"rgb/{INDEX}.png"))
+    image = np.array(image)
+    if USE_MEASURED:
+        depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
+        depth = np.array(depth)/1000
+        img_normal = get_normal(depth, INTRINSICS)
+    else:
+        depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
+        depth = np.array(depth)/1000
+        #_, img_normal = metric3d(model, image)
 
-    result = model.calibrate(image)
+    W, H = depth.shape
+    img_normal = img_normal * np.where(img_normal[:,:,2] >=0, 1, -1).reshape(W, H, 1)
+    
+    points, index = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
+    #img_dist = img_normal * points.reshape(W, H, 3)
+    #img_dist = np.sum(img_dist, axis=2).reshape(W, H, 1)
+    #print(img_dist.shape, img_dist.max(), img_dist.min())
+    #img_normal = img_normal * np.where(img_dist >=0, 1, -1)
+    #print(np.where(img_dist >=0, 1, -1).shape)
+    
+    plt.imsave("normal.png", (img_normal+1)/2)
 
-    # Convert depth to point cloud
+    img_normal_angle = np.zeros((W, H, 2))
+    img_normal_angle[:, :, 0] = np.arctan(img_normal[:,:,0]/(img_normal[:,:,2]+1e-15))
+    img_normal_angle[:, :, 1] = np.arctan(img_normal[:,:,1]/(img_normal[:,:,2]+1e-15))
 
-    points, index = depth_to_pcd(depth, INTRINSICS)
-    print(points.shape)
-    print(index.shape)
+    print(img_normal_angle[:,:,0].max(), img_normal_angle[:,:,0].min())
+    print(img_normal_angle[:,:,1].max(), img_normal_angle[:,:,1].min())
 
-    print(depth.max(), points[:, 2].max())
+    angle_cluster = np.zeros((ANGLE_INCREMENT, ANGLE_INCREMENT))
+    for i in range(-ANGLE_INCREMENT//2, ANGLE_INCREMENT//2):
+        for j in range(-ANGLE_INCREMENT//2, ANGLE_INCREMENT//2):
+            angle_cluster[i, j] = np.sum((img_normal_angle[:, :, 0] >= (i)*np.pi/ANGLE_INCREMENT) 
+                                         & (img_normal_angle[:, :, 0] < (i+1)*np.pi/ANGLE_INCREMENT)
+                                         & (img_normal_angle[:, :, 1] >= (j)*np.pi/ANGLE_INCREMENT)
+                                         & (img_normal_angle[:, :, 1] < (j+1)*np.pi/ANGLE_INCREMENT)
+                                         & (depth != 0))
 
-    # Find distnace of pts
+    dillation = np.zeros((ANGLE_INCREMENT, ANGLE_INCREMENT))
+    angle_cluster = np.pad(angle_cluster, ((KERNEL_2D//2, KERNEL_2D//2), (KERNEL_2D//2, KERNEL_2D//2)), mode='wrap')
+    for i in range(ANGLE_INCREMENT):
+        for j in range(ANGLE_INCREMENT):
+            dillation[i, j] = np.max(angle_cluster[i:i+KERNEL_2D, j:j+KERNEL_2D])
 
-    normal = [result["gravity"].x.item(), result["gravity"].y.item(), result["gravity"].z.item()]
-    normal = np.array(normal)
-    normal = normal / np.linalg.norm(normal)
-    print(normal)
-
-    # Find img normal
-    img_normal = get_normal(depth, INTRINSICS)
-    img_normal = img_normal.reshape(-1, 3)
-
-    if False:
-        img_normal_rgb = (img_normal + 1)/2 * 255
-        img_normal_rgb = img_normal_rgb.astype(np.uint8)
-        plt.imsave("normal.png", img_normal_rgb)
-
-    # Get distances
-
-    dot1 = np.dot(img_normal, normal)
-    dot2 = np.dot(img_normal, -normal)
-    dot1 = dot1.reshape(-1,1)
-    dot2 = dot2.reshape(-1,1)
-
-    angle_dist = np.concatenate((dot1, dot2), axis=1)
-    angle_dist = np.max(angle_dist, axis=1)
-
-    scalar_dist = np.dot(points, normal)
-    scalar_dist[angle_dist < 0.9] = 0
-    scalar_dist[points[:, 2] == 0] = 0
+    angle_cluster = angle_cluster[KERNEL_2D//2:-KERNEL_2D//2+1, KERNEL_2D//2:-KERNEL_2D//2+1]
 
     if True:
+        plt.imsave("angle_cluster.png", angle_cluster)
+
+    # Find index where angle_cluster is equal to dillation
+    index = np.where(angle_cluster == dillation)
+    
+    # Within the index, find the maximum index
+    max_index = np.unravel_index(np.argmax(angle_cluster[index]), angle_cluster[index].shape)
+
+    angle_x = (index[max_index[0]][0] - ANGLE_INCREMENT//2) * np.pi / ANGLE_INCREMENT
+    angle_y = (index[max_index[0]][1] - ANGLE_INCREMENT//2) * np.pi / ANGLE_INCREMENT
+    
+    grav_normal = np.array([np.tan(angle_x), np.tan(angle_y), 1])
+    grav_normal = grav_normal / np.linalg.norm(grav_normal)
+
+
+    img_normal_pos = img_normal.reshape(-1, 3)
+    img_normal_neg = -img_normal_pos
+    dot1 = np.dot(img_normal_pos, grav_normal).reshape(-1, 1)
+    dot2 = np.dot(img_normal_neg, grav_normal).reshape(-1, 1)
+    
+    dot = np.concatenate((dot1, dot2), axis=1)
+    normal_index = np.argmax(dot, axis=1)
+    img_normal = np.zeros_like(img_normal_pos)
+    img_normal[normal_index == 0] = img_normal_pos[normal_index == 0]
+    img_normal[normal_index == 1] = img_normal_neg[normal_index == 1]
+
+    dot_bound = 0.9
+    correction_iteration = 10
+    grav_normal = gravity_correction(grav_normal,img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, correction_iteration)
+
+    if True:
+        dot1 = np.dot(img_normal, grav_normal).reshape(-1,1)
+        dot2 = np.dot(img_normal, -grav_normal).reshape(-1,1)
+
+        angle_dist = np.concatenate((dot1, dot2), axis=1)
+        angle_dist = np.max(angle_dist, axis=1)
+        scalar_dist = np.dot(points.reshape(-1,3), grav_normal)
+        scalar_dist[angle_dist < dot_bound] = 0
+        scalar_dist[points.reshape(-1,3)[:, 2] == 0] = 0
+
         # Plot histogram
         fig, ax = plt.subplots()
         ax.hist(scalar_dist[scalar_dist!=0], bins=1000)
         plt.xlabel("Distance")
         plt.ylabel("Count")
         plt.title("Histogram of Distance")
-        fig.savefig("histogram.png")
+        fig.savefig("./histogram.png")
 
-    K = 8
-    
-    index = index[scalar_dist != 0]
-    scalar_dist = scalar_dist[scalar_dist != 0]
+    kernel_size = 11
+    cluster_size = 11
 
-    bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.01)
-    hist, bin_edges = np.histogram(scalar_dist, bins=bins)
+    mask = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size)
+    mask_2d = mask.reshape(W, H)
 
-    kernel_size = 5
-    kernel = [-kernel_size//2 + 1 + i for i in range(kernel_size)]
-
-    group_size = 3
-    group = [-group_size//2 + 1 + i for i in range(group_size)]
-    print(kernel, group)
-
-    # Dilation of histogram
-    dilation_hist = np.pad(hist, (kernel_size//2, kernel_size//2))
-    dilation_hist = [np.roll(dilation_hist, i) for i in kernel]
-    dilation_hist = np.array(dilation_hist)
-    dilation_hist = np.max(dilation_hist, axis=0)[kernel_size//2:-kernel_size//2+1]
-    
-    # Get index where dilation_hist is equal to hist
-    candidate_peak = np.where(dilation_hist == hist)[0]
-
-    local_total = np.pad(hist, (group_size//2, group_size//2))
-    local_total = [np.roll(local_total, i) for i in group]
-    local_total = np.array(local_total)
-    local_total = np.sum(local_total, axis=0)[group_size//2:-group_size//2+1]
-
-    # Get index of the 10 largest values in local_total
-    best_peaks = np.argsort(local_total[candidate_peak])[-4:]
-    best_peaks_index = candidate_peak[best_peaks]
-    
-    mask_2d = np.zeros_like(depth, dtype=np.uint8)
-    for i in range(len(best_peaks_index)):
-        for j in range(len(scalar_dist)):
-            if (best_peaks_index[i] - group_size//2) >=0:
-                lower_bound = bin_edges[best_peaks_index[i]-group_size//2]
-            else:
-                lower_bound = bin_edges[0]
-            if (best_peaks_index[i] + 1 + group_size//2) < len(bin_edges):
-                upper_bound = bin_edges[best_peaks_index[i] + 1 + group_size//2]
-            else:
-                upper_bound = bin_edges[-1]
-            if scalar_dist[j] > lower_bound and scalar_dist[j] < upper_bound:
-                mask_2d[index[j, 0], index[j, 1]] = i + 1
-    print(mask_2d.max())
-
-
-    """
-    # Randomly sample K points
-    idx = np.random.choice(len(scalar_dist), K, replace=False)
-    means = scalar_dist[idx]
-
-    for _ in range(100):
-        dist = np.abs(scalar_dist[:, None] - means[None, :])
-        dist = abs(dist)
-        mask = np.argmin(dist, axis=1)
-        means = np.zeros((K, 1))
-        for i in range(K):
-            means[i] = np.mean(scalar_dist[mask == i])
-        means = means.reshape(-1)
-
-    mask_2d = np.zeros_like(depth, dtype=np.uint8)
-    for i in range(len(mask)):
-        mask_2d[index[i, 0], index[i, 1]] = mask[i] + 1
-    """
     if True:
         # Plot mask
         fig, ax = plt.subplots()
@@ -153,8 +155,10 @@ for INDEX in range(1,1000):
         plt.savefig("mask.png")
 
         fig, ax = plt.subplots()
-        ax.imshow(image.permute(1, 2, 0).cpu().numpy())
+        ax.imshow(image)
         ax.imshow(hsv_img(mask_2d), alpha=0.5, cmap="hsv")
         plt.axis('off')
         # Save depth
         plt.savefig(os.path.join(DIR, f"test/{INDEX}.png"), bbox_inches='tight', pad_inches=0)
+
+    exit()
