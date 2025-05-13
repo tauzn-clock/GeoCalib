@@ -16,6 +16,7 @@ from utils.gravity_correction import gravity_correction
 from utils.get_mask import get_mask
 from utils.hsv import hsv_img
 from utils.metric3d import metric3d
+from utils.test_depth import parabolic, flat
 
 from scipy.spatial.transform import Rotation as R
 
@@ -49,6 +50,8 @@ for INDEX in range(0,1000):
     if USE_MEASURED:
         depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
         depth = np.array(depth)/1000
+        W, H = depth.shape
+        #depth = flat(H,W)
         img_normal = get_normal(depth, INTRINSICS)
     else:
         depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
@@ -56,8 +59,9 @@ for INDEX in range(0,1000):
         #_, img_normal = metric3d(model, image)
 
     W, H = depth.shape
+
     img_normal = img_normal * np.where(img_normal[:,:,2] >=0, 1, -1).reshape(W, H, 1)
-    
+
     points, index = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
     #img_dist = img_normal * points.reshape(W, H, 3)
     #img_dist = np.sum(img_dist, axis=2).reshape(W, H, 1)
@@ -65,7 +69,7 @@ for INDEX in range(0,1000):
     #img_normal = img_normal * np.where(img_dist >=0, 1, -1)
     #print(np.where(img_dist >=0, 1, -1).shape)
     
-    plt.imsave("normal.png", (img_normal+1)/2)
+    if True: plt.imsave("normal.png", (img_normal+1)/2)
 
     img_normal_angle = np.zeros((W, H, 2))
     img_normal_angle[:, :, 0] = np.arctan(img_normal[:,:,0]/(img_normal[:,:,2]+1e-15))
@@ -74,13 +78,15 @@ for INDEX in range(0,1000):
     print(img_normal_angle[:,:,0].max(), img_normal_angle[:,:,0].min())
     print(img_normal_angle[:,:,1].max(), img_normal_angle[:,:,1].min())
 
+    print(img_normal_angle[100,100])
+
     angle_cluster = np.zeros((ANGLE_INCREMENT, ANGLE_INCREMENT))
-    for i in range(-ANGLE_INCREMENT//2, ANGLE_INCREMENT//2):
-        for j in range(-ANGLE_INCREMENT//2, ANGLE_INCREMENT//2):
-            angle_cluster[i, j] = np.sum((img_normal_angle[:, :, 0] >= (i)*np.pi/ANGLE_INCREMENT) 
-                                         & (img_normal_angle[:, :, 0] < (i+1)*np.pi/ANGLE_INCREMENT)
-                                         & (img_normal_angle[:, :, 1] >= (j)*np.pi/ANGLE_INCREMENT)
-                                         & (img_normal_angle[:, :, 1] < (j+1)*np.pi/ANGLE_INCREMENT)
+    for i in range(0, ANGLE_INCREMENT):
+        for j in range(0, ANGLE_INCREMENT):
+            angle_cluster[i, j] = np.sum((img_normal_angle[:, :, 0] >= (i-ANGLE_INCREMENT/2)*np.pi/ANGLE_INCREMENT ) 
+                                         & (img_normal_angle[:, :, 0] < (i+1-ANGLE_INCREMENT/2)*np.pi/ANGLE_INCREMENT)
+                                         & (img_normal_angle[:, :, 1] >= (j-ANGLE_INCREMENT/2)*np.pi/ANGLE_INCREMENT)
+                                         & (img_normal_angle[:, :, 1] < (j+1-ANGLE_INCREMENT/2)*np.pi/ANGLE_INCREMENT)
                                          & (depth != 0))
 
     dillation = np.zeros((ANGLE_INCREMENT, ANGLE_INCREMENT))
@@ -168,4 +174,3 @@ for INDEX in range(0,1000):
         plt.axis('off')
         # Save depth
         plt.savefig(os.path.join(DIR, f"test/{INDEX}.png"), bbox_inches='tight', pad_inches=0)
-
