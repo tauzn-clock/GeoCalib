@@ -27,10 +27,29 @@ def gravity_correction(grav_normal, img_normal, pts_3d, bound, iteration):
         mean_x = np.mean(x[(angle_dist > bound) & (pts_3d[:,2]!=0)])
         mean_y = np.mean(y[(angle_dist > bound) & (pts_3d[:,2]!=0)])
 
-        rot = R.from_euler("XYZ",[mean_x,mean_y,0]).as_matrix()
+        #rot = R.from_euler("XYZ",[mean_x,mean_y,0]).as_matrix()
+        rot = get_rotation(mean_x, mean_y, 0)
+        print(rot[0,0] * grav_normal[0] + rot[0,1] * grav_normal[1] + rot[0,2] * grav_normal[2])
+        print(rot[0,1],rot[1,0])
         grav_normal = rot @ grav_normal
+        print("mean_x: ", mean_x, "mean_y: ", mean_y)
 
         #normal = np.array([grav_normal[0], np.cos(mean_x) * grav_normal[1] - np.sin(mean_x) * grav_normal[2], np.sin(mean_x) * grav_normal[1] + np.cos(mean_x) * grav_normal[2]])
         #normal = np.array([np.cos(mean_y) * grav_normal[0] + np.sin(mean_y) * grav_normal[2], grav_normal[1], -np.sin(mean_y) * grav_normal[0] + np.cos(mean_y) * grav_normal[2]])
     
+    print()
     return grav_normal
+
+def get_rotation(alpha, beta, gamma):
+    """
+    Get rotation matrix from Euler angles
+    :param alpha: rotation around x-axis
+    :param beta: rotation around y-axis
+    :param gamma: rotation around z-axis
+    :return: rotation matrix
+    """
+    R = np.array([[np.cos(beta) * np.cos(gamma), -np.cos(beta) * np.sin(gamma), np.sin(beta)],
+                 [np.cos(alpha) * np.sin(gamma) + np.cos(gamma) * np.sin(alpha) * np.sin(beta), np.cos(alpha) * np.cos(gamma) - np.sin(alpha) * np.sin(beta) * np.sin(gamma), -np.cos(beta) * np.sin(alpha)],
+                 [np.sin(alpha) * np.sin(gamma) - np.cos(alpha) * np.cos(gamma) * np.sin(beta), np.cos(gamma) * np.sin(alpha) + np.cos(alpha) * np.sin(beta) * np.sin(gamma), np.cos(alpha) * np.cos(beta)]])
+
+    return R
