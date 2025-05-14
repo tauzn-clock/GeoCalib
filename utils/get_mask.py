@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size):
+def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size,bin_size=0.01):
     mask = np.zeros(len(img_normal), dtype=np.uint8)
     index = np.array([i for i in range(len(img_normal))])
 
@@ -18,7 +18,7 @@ def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_si
     if (len(scalar_dist)==0):
         return mask
         
-    bins = np.arange(scalar_dist.min(), scalar_dist.max(), 0.01)
+    bins = np.arange(scalar_dist.min(), scalar_dist.max(), bin_size)
     hist, bin_edges = np.histogram(scalar_dist, bins=bins)
 
     kernel = [-kernel_size//2 + 1 + i for i in range(kernel_size)]
