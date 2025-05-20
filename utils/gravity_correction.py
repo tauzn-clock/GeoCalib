@@ -1,4 +1,4 @@
-from scipy.spatial.transform import Rotation as R
+#from scipy.spatial.transform import Rotation as R
 import numpy as np
 
 def gravity_correction(grav_normal, img_normal, pts_3d, bound, iteration):
