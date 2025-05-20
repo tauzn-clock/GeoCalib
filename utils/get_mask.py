@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size,bin_size=0.01):
+def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size,bin_size=0.01, plane_cnt=4):
     mask = np.zeros(len(img_normal), dtype=np.uint8)
     index = np.array([i for i in range(len(img_normal))])
 
@@ -38,8 +38,8 @@ def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_si
     local_total = np.array(local_total)
     local_total = np.sum(local_total, axis=0)[cluster_size//2:-cluster_size//2+1]
 
-    # Get index of the 4 largest values in local_total
-    best_peaks = np.argsort(local_total[candidate_peak])[-4:]
+    # Get index of the plane_cnt largest values in local_total
+    best_peaks = np.argsort(local_total[candidate_peak])[-plane_cnt:]
     best_peaks_index = candidate_peak[best_peaks]
     
     for i in range(len(best_peaks_index)):
