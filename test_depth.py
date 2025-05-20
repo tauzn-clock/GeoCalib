@@ -27,6 +27,8 @@ from Metric3D.run_metric3d import run_metric3d
 #from scipy.spatial.transform import Rotation as R
 
 DIR = "/scratchdata/stair3"
+#DIR = "/scratchdata/processed/stair_up"
+
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
 INTRINSICS = camera_info["P"]
@@ -49,7 +51,7 @@ KERNEL_2D = 5
 #        odom.append([float(x) for x in line])
 #odom = np.array(odom)
 
-for INDEX in range(0,1000):
+for INDEX in range(40,1000):
     # load image as tensor in range [0, 1] with shape [C, H, W]
     image = Image.open(os.path.join(DIR,f"rgb/{INDEX}.png"))
     image = np.array(image)
@@ -169,6 +171,7 @@ for INDEX in range(0,1000):
         cur_plane = mask.max()
         mask = np.where(mask_2d != 0, mask_2d + cur_plane, mask)
 
+    print(mask.max())
 
     def rescale(measured, est, mask):
         input_measured = measured[mask == 1]
@@ -185,8 +188,23 @@ for INDEX in range(0,1000):
     
     rescaled = rescale(depth, metric3d_depth, mask)
     print(rescaled.max(), rescaled.min())
+    print(depth.max(), depth.min())
 
-    exit()
+    plt.imsave('rescaled.png', rescaled)
+    plt.imsave('depth.png', depth)
+    diff = rescaled - depth
+    diff[depth == 0] = 0
+    diff = abs(diff)
+    print(diff.max(), diff.min())
+    plt.imsave('diff.png', diff)
+
+    # Histogram of diff
+    fig, ax = plt.subplots()
+    ax.hist(diff[diff!=0], bins=1000)
+    plt.xlabel("Distance")
+    plt.ylabel("Count")
+    plt.title("Histogram of Distance")
+    fig.savefig("./diff_histogram.png")
 
     if True:
         # Plot mask
@@ -195,6 +213,8 @@ for INDEX in range(0,1000):
         plt.axis('off')
         # Save mask
         plt.savefig("mask.png")
+        
+        exit()
 
         fig, ax = plt.subplots()
         ax.imshow(image)
