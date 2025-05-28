@@ -26,7 +26,7 @@ from Metric3D.run_metric3d import run_metric3d
 
 #from scipy.spatial.transform import Rotation as R
 
-DIR = "/scratchdata/processed/stair_up"
+DIR = "/scratchdata/processed/stair4"
 
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
@@ -236,5 +236,21 @@ for INDEX in range(40,1000):
     save_pcd(image, pcd, os.path.join(DIR, f"metric3d.ply"))
     pcd,_ = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
     save_pcd(image, pcd, os.path.join(DIR, f"depth.ply"))
+
+    # Scaled rigid transform
+
+    from utils.scaled_rigid_transform import scaled_rigid_transform
+
+    gt_3d = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)[0]
+    est_3d = depth_to_pcd(metric3d_depth.flatten(), INTRINSICS, H, W)[0]
+    print(gt_3d.shape, est_3d.shape)
+    
+    s, R, t = scaled_rigid_transform(est_3d[gt_3d[:,2]!=0], gt_3d[gt_3d[:,2]!=0])
+    print("Scale:", s)
+    print("Rotation:", R)
+    print("Translation:", t)
+
+    est_3d = s * np.dot(est_3d, R.T) + t
+    save_pcd(image, est_3d, os.path.join(DIR, f"scaled_rigid_transform.ply"))
 
     exit()
