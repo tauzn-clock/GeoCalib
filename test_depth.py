@@ -26,8 +26,7 @@ from Metric3D.run_metric3d import run_metric3d
 
 #from scipy.spatial.transform import Rotation as R
 
-DIR = "/scratchdata/stair3"
-#DIR = "/scratchdata/processed/stair_up"
+DIR = "/scratchdata/processed/stair_up"
 
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
@@ -65,6 +64,8 @@ for INDEX in range(40,1000):
         depth = Image.open(os.path.join(DIR, f"depth/{INDEX}.png"))
         depth = np.array(depth)/1000
         #_, img_normal = metric3d(model, image)
+
+    print("Depth", depth.max())
 
     metric3d_depth, metric3d_normal = run_metric3d(image)
 
@@ -193,6 +194,7 @@ for INDEX in range(40,1000):
     plt.imsave('rescaled.png', rescaled)
     plt.imsave('depth.png', depth)
     diff = rescaled - depth
+    #diff[depth > 4] = 0
     diff[depth == 0] = 0
     diff = abs(diff)
     print(diff.max(), diff.min())
@@ -214,14 +216,25 @@ for INDEX in range(40,1000):
         # Save mask
         plt.savefig("mask.png")
         
-        exit()
-
-        fig, ax = plt.subplots()
-        ax.imshow(image)
-        ax.imshow(hsv_img(mask), alpha=0.5, cmap="hsv")
-        plt.axis('off')
+        #fig, ax = plt.subplots()
+        #ax.imshow(image)
+        #ax.imshow(hsv_img(mask), alpha=0.5, cmap="hsv")
+        #plt.axis('off')
         # Save depth
-        plt.savefig(os.path.join(DIR, f"test/{INDEX}.png"), bbox_inches='tight', pad_inches=0)
+        #plt.savefig(os.path.join(DIR, f"test/{INDEX}.png"), bbox_inches='tight', pad_inches=0)
 
+
+    from save_pcd import save_pcd
+
+    print(depth.shape, depth.max())
+    print(rescaled.shape, rescaled.max())
+    print(metric3d_depth.shape, metric3d_depth.max())
+
+    pcd,_ = depth_to_pcd(rescaled.flatten(), INTRINSICS, H, W)
+    save_pcd(image, pcd, os.path.join(DIR, f"rescaled.ply"))
+    pcd,_ = depth_to_pcd(metric3d_depth.flatten(), INTRINSICS, H, W)
+    save_pcd(image, pcd, os.path.join(DIR, f"metric3d.ply"))
+    pcd,_ = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)
+    save_pcd(image, pcd, os.path.join(DIR, f"depth.ply"))
 
     exit()
