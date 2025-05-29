@@ -21,5 +21,7 @@ def get_normal(depth, INTRINSICS):
     normal = normal / (np.linalg.norm(normal, axis=2, keepdims=True) + 1e-16)
     normal[depth == 0] = 0
 
+    normal = normal * np.where(normal[:, :, 2] >= 0, 1, -1).reshape(H, W, 1)
+    
     return normal
     

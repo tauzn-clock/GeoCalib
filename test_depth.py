@@ -21,6 +21,7 @@ from utils.get_mask import get_mask
 from utils.hsv import hsv_img
 from utils.metric3d import metric3d
 from utils.test_depth import parabolic, flat
+from utils.get_planes import get_planes
 
 from Metric3D.run_metric3d import run_metric3d
 
@@ -50,7 +51,7 @@ KERNEL_2D = 5
 #        odom.append([float(x) for x in line])
 #odom = np.array(odom)
 
-for INDEX in range(40,1000):
+for INDEX in range(0,1000):
     # load image as tensor in range [0, 1] with shape [C, H, W]
     image = Image.open(os.path.join(DIR,f"rgb/{INDEX}.png"))
     image = np.array(image)
@@ -71,6 +72,10 @@ for INDEX in range(40,1000):
 
     plt.imsave('metric3d_depth.png', metric3d_depth)
     plt.imsave('metric3d_normal.png', (metric3d_normal+1)/2)
+    
+    get_planes(depth, INTRINSICS, ANGLE_CLUSTER = 3)
+    
+    exit()
 
     W, H = depth.shape
 
