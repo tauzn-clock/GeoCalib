@@ -1,7 +1,7 @@
 #from scipy.spatial.transform import Rotation as R
 import numpy as np
 
-def gravity_correction(grav_normal, img_normal, pts_3d, bound, iteration):
+def gravity_correction(grav_normal, img_normal, bound, iteration):
     for _ in range(iteration):
         normal_x = np.array([0,grav_normal[1], grav_normal[2]])
         normal_x = normal_x / (np.linalg.norm(normal_x) + 1e-15)
@@ -24,8 +24,8 @@ def gravity_correction(grav_normal, img_normal, pts_3d, bound, iteration):
         y = np.arctan2(sin_y, cos_y)
 
         angle_dist = np.dot(img_normal, grav_normal)
-        mean_x = np.mean(x[(angle_dist > bound) & (pts_3d[:,2]!=0)])
-        mean_y = np.mean(y[(angle_dist > bound) & (pts_3d[:,2]!=0)])
+        mean_x = np.mean(x[(angle_dist > bound) & (img_normal[:,2]!=0)])
+        mean_y = np.mean(y[(angle_dist > bound) & (img_normal[:,2]!=0)])
 
         #rot = R.from_euler("XYZ",[mean_x,mean_y,0]).as_matrix()
         rot = get_rotation(mean_x, mean_y, 0)

@@ -2,11 +2,17 @@ import numpy as np
 from utils.get_normal import get_normal
 from matplotlib import pyplot as plt
 
+from utils.gravity_correction import gravity_correction
+from utils.get_mask import get_mask
+from utils.depth_to_pcd import depth_to_pcd
+from utils.hsv import hsv_img
+
 def get_planes(depth, INTRINSICS, ANGLE_CLUSTER):
     # Output mask
     mask = np.zeros_like(depth, dtype=np.uint8)
 
     W, H = depth.shape
+    points, _ = depth_to_pcd(depth.flatten(), INTRINSICS, W, H)    
     ANGLE_INCREMENT = 41
     KERNEL_2D = 5
 
@@ -49,7 +55,7 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER):
         grav_normal = np.array([np.tan(angle_x), np.tan(angle_y), 1])
         grav_normal = grav_normal / np.linalg.norm(grav_normal)
 
-        img_normal_pos = img_normal.reshape(-1, 3)
+        img_normal_pos = normal.reshape(-1, 3)
         img_normal_neg = -img_normal_pos
         dot1 = np.dot(img_normal_pos, grav_normal).reshape(-1, 1)
         dot2 = np.dot(img_normal_neg, grav_normal).reshape(-1, 1)
@@ -62,30 +68,19 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER):
 
         dot_bound = 0.9
         correction_iteration = 10
-        grav_normal = gravity_correction(grav_normal,img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, correction_iteration)
-
-        if True:
-            dot1 = np.dot(img_normal, grav_normal).reshape(-1,1)
-            dot2 = np.dot(img_normal, -grav_normal).reshape(-1,1)
-
-            angle_dist = np.concatenate((dot1, dot2), axis=1)
-            angle_dist = np.max(angle_dist, axis=1)
-            scalar_dist = np.dot(points.reshape(-1,3), grav_normal)
-            scalar_dist[angle_dist < dot_bound] = 0
-            scalar_dist[points.reshape(-1,3)[:, 2] == 0] = 0
-
-            # Plot histogram
-            fig, ax = plt.subplots()
-            ax.hist(scalar_dist[scalar_dist!=0], bins=1000)
-            plt.xlabel("Distance")
-            plt.ylabel("Count")
-            plt.title("Histogram of Distance")
-            fig.savefig("./histogram.png")
+        grav_normal = gravity_correction(grav_normal, normal.reshape(-1,3), dot_bound, correction_iteration)
 
         kernel_size = 11
         cluster_size = 11
 
-        mask_2d = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size, plane_cnt=1)
+        mask_2d = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size, plane_cnt=3)
         mask_2d = mask_2d.reshape(W, H)
         cur_plane = mask.max()
         mask = np.where(mask_2d != 0, mask_2d + cur_plane, mask)
+
+        print(mask.max())
+        
+    
+    fig, ax = plt.subplots()
+    ax.imshow(hsv_img(mask))
+    fig.savefig("mask.png")

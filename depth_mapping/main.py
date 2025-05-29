@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-DIR = "/scratchdata/processed/alcove2"
+DIR = "/scratchdata/processed/long"
 
 with open(os.path.join(DIR, "camera_info.json"), "r") as f:
     camera_info = json.load(f)
