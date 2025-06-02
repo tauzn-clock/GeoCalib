@@ -44,11 +44,9 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER, RATIO_SIZE):
 
     # Get the best peaks in the angle_cluster
     best_peaks = np.argsort(angle_cluster[index])[-ANGLE_CLUSTER:][::-1]
-    print(best_peaks)
     best_peaks_index = np.array([index[0][best_peaks], index[1][best_peaks]]).T
 
     for i in range(best_peaks_index.shape[0]):
-        print(angle_cluster[best_peaks_index[i][0], best_peaks_index[i][1]])
         angle_x = (best_peaks_index[i][0] - ANGLE_INCREMENT//2) * np.pi / ANGLE_INCREMENT
         angle_y = (best_peaks_index[i][1] - ANGLE_INCREMENT//2) * np.pi / ANGLE_INCREMENT
         
@@ -76,7 +74,5 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER, RATIO_SIZE):
         mask_2d = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size, RATIO_SIZE=RATIO_SIZE)
         mask_2d = mask_2d.reshape(W, H)
         mask = np.where(mask_2d != 0, mask_2d + mask.max(), mask)
-
-        print(mask.max())
         
-    plt.imsave("mask.png", hsv_img(mask))
+    return mask
