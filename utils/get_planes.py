@@ -12,7 +12,7 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER, RATIO_SIZE):
     mask = np.zeros_like(depth, dtype=np.uint8)
 
     W, H = depth.shape
-    points, _ = depth_to_pcd(depth.flatten(), INTRINSICS, W, H)    
+    points, _ = depth_to_pcd(depth.flatten(), INTRINSICS, H, W)    
     ANGLE_INCREMENT = 37
     KERNEL_2D = 5
 
@@ -43,7 +43,7 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER, RATIO_SIZE):
     index = np.where(angle_cluster == dillation)
 
     # Get the best peaks in the angle_cluster
-    best_peaks = np.argsort(angle_cluster[index])[-ANGLE_CLUSTER:]
+    best_peaks = np.argsort(angle_cluster[index])[-ANGLE_CLUSTER:][::-1]
     print(best_peaks)
     best_peaks_index = np.array([index[0][best_peaks], index[1][best_peaks]]).T
 

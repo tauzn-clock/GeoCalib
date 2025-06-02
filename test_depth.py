@@ -73,7 +73,7 @@ for INDEX in range(40,1000):
     plt.imsave('metric3d_depth.png', metric3d_depth)
     plt.imsave('metric3d_normal.png', (metric3d_normal+1)/2)
     
-    get_planes(depth, INTRINSICS, ANGLE_CLUSTER = 1, RATIO_SIZE = 0.05)
+    get_planes(depth, INTRINSICS, ANGLE_CLUSTER = 3, RATIO_SIZE = 0.02)
     
     exit()
 
