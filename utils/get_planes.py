@@ -7,13 +7,13 @@ from utils.get_mask import get_mask
 from utils.depth_to_pcd import depth_to_pcd
 from utils.hsv import hsv_img
 
-def get_planes(depth, INTRINSICS, ANGLE_CLUSTER):
+def get_planes(depth, INTRINSICS, ANGLE_CLUSTER, RATIO_SIZE):
     # Output mask
     mask = np.zeros_like(depth, dtype=np.uint8)
 
     W, H = depth.shape
     points, _ = depth_to_pcd(depth.flatten(), INTRINSICS, W, H)    
-    ANGLE_INCREMENT = 41
+    ANGLE_INCREMENT = 37
     KERNEL_2D = 5
 
     normal = get_normal(depth, INTRINSICS)
@@ -67,20 +67,16 @@ def get_planes(depth, INTRINSICS, ANGLE_CLUSTER):
         img_normal[normal_index == 1] = img_normal_neg[normal_index == 1]
 
         dot_bound = 0.9
-        correction_iteration = 10
+        correction_iteration = 5
         grav_normal = gravity_correction(grav_normal, normal.reshape(-1,3), dot_bound, correction_iteration)
 
         kernel_size = 11
         cluster_size = 11
 
-        mask_2d = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size, plane_cnt=3)
+        mask_2d = get_mask(grav_normal, img_normal.reshape(-1,3), points.reshape(-1,3), dot_bound, kernel_size, cluster_size, RATIO_SIZE=RATIO_SIZE)
         mask_2d = mask_2d.reshape(W, H)
-        cur_plane = mask.max()
-        mask = np.where(mask_2d != 0, mask_2d + cur_plane, mask)
+        mask = np.where(mask_2d != 0, mask_2d + mask.max(), mask)
 
         print(mask.max())
         
-    
-    fig, ax = plt.subplots()
-    ax.imshow(hsv_img(mask))
-    fig.savefig("mask.png")
+    plt.imsave("mask.png", hsv_img(mask))

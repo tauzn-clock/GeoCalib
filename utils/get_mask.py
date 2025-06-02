@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size,bin_size=0.01, plane_cnt=4):
+def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_size, bin_size=0.01, RATIO_SIZE=0.1):
     mask = np.zeros(len(img_normal), dtype=np.uint8)
     index = np.array([i for i in range(len(img_normal))])
 
@@ -39,20 +39,27 @@ def get_mask(grav_normal, img_normal, pts_3d, dot_bound, kernel_size, cluster_si
     local_total = np.sum(local_total, axis=0)[cluster_size//2:-cluster_size//2+1]
 
     # Get index of the plane_cnt largest values in local_total
-    best_peaks = np.argsort(local_total[candidate_peak])[-plane_cnt:]
+    best_peaks = np.argsort(local_total[candidate_peak])[::-1]
     best_peaks_index = candidate_peak[best_peaks]
     
     for i in range(len(best_peaks_index)):
-        for j in range(len(scalar_dist)):
-            if (best_peaks_index[i] - cluster_size//2) >=0:
+        if (best_peaks_index[i] - cluster_size//2) >=0:
                 lower_bound = bin_edges[best_peaks_index[i]-cluster_size//2]
-            else:
-                lower_bound = bin_edges[0]
-            if (best_peaks_index[i] + 1 + cluster_size//2) < len(bin_edges):
-                upper_bound = bin_edges[best_peaks_index[i] + 1 + cluster_size//2]
-            else:
-                upper_bound = bin_edges[-1]
+        else:
+            lower_bound = bin_edges[0]
+        if (best_peaks_index[i] + 1 + cluster_size//2) < len(bin_edges):
+            upper_bound = bin_edges[best_peaks_index[i] + 1 + cluster_size//2]
+        else:
+            upper_bound = bin_edges[-1]+ bin_size
+            
+        tmp_mask = np.zeros_like(mask, dtype=np.uint8)    
+        for j in range(len(scalar_dist)):
             if scalar_dist[j] > lower_bound and scalar_dist[j] < upper_bound:
-                mask[index[j]] = i + 1
+                tmp_mask[index[j]] = i + 1
+        
+        if np.sum(tmp_mask)/ len(tmp_mask) > RATIO_SIZE:
+            mask = np.where(tmp_mask != 0, tmp_mask, mask)
+        else:
+            break
     
     return mask
